@@ -1,0 +1,16 @@
+{
+  "name": "family-clock-worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^4.85.0"
+  },
+  "dependencies": {
+    "tz-lookup": "^6.1.25"
+  }
+}
