@@ -4,3 +4,5 @@ TOKENS.toml
 node_modules
 .wrangler
 package-lock.json
+.worktrees/
+build/
