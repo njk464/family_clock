@@ -148,6 +148,22 @@ artsy editorial font. Update the faceplate SVG, BOM, and firmware accordingly.
 **Critical path:** 1 wave, all four items dispatch-able together.
 **Max width:** 4 (or 1 combined dispatch — recommended).
 
+##### Phase 2: Preview to-scale fix
+
+**Status:** active
+
+**Context:** Phase 1 shipped with the analog dial at 120 px and the e-paper card at 300 × 130 px. User flagged that the preview isn't to physical scale — in reality the dial is ~68 mm (limited by faceplate layout) and the card is 70 mm wide, so they should be roughly equal width on the wall. Current preview makes the card look 2.5× wider than the dial.
+
+**Goal:** Make the preview faithful to physical proportions.
+
+**Work item:**
+- **W2-PREVIEW-SCALE** | Weight: XS | Deps: none
+  - Edit `.dial-svg` in `worker.js` PREVIEW_HTML CSS: width/height 120px → 290px (matches real ~68 mm dial at 4.3 px/mm scale).
+  - Update mobile `@media` rule: dial 90px → 210px proportional.
+  - `.clock-cell` min-width 200px → 280px (desktop), 160px → 200px (mobile).
+  - Update JSDoc on PREVIEW_HTML (DEC-EPAPER-004) noting the scale fix.
+  - **Acceptance:** Dial fills nearly the same width as the e-paper card below it. Three cells still fit side-by-side within the 1100 px frame container at typical desktop widths.
+
 #### Open Questions for the User
 
 - **Q-FONT-THEME** *(blocking W1-PREVIEW and W1-FW)* — Pick the artsy font theme:
