@@ -142,6 +142,9 @@ function handlePreview() {
  * in firmware. Preview background #f7f3ec (paper off-white), label cards
  * #fdfaf3 with 1px #1a1a1a border — faithful mock of black-on-paper e-paper.
  * Live-update JS (60s poll + 1s render) retained from previous version.
+ * Dial sized to physical scale (~290 px desktop / ~210 px mobile) so preview
+ * faithfully mocks ~68 mm wall-mounted clock face next to the 70 mm e-paper
+ * card. Updated 2026-04-30.
  */
 const PREVIEW_HTML = `<!doctype html>
 <html lang="en">
@@ -211,14 +214,14 @@ const PREVIEW_HTML = `<!doctype html>
     align-items: center;
     gap: 14px;
     flex: 1;
-    min-width: 200px;
+    min-width: 280px;
     max-width: 320px;
   }
 
   /* ---- Analog dial ---- */
   .dial-svg {
-    width: 120px;
-    height: 120px;
+    width: 290px;
+    height: 290px;
     display: block;
   }
   .dial-face  { fill: #fff; stroke: #2a2a2a; stroke-width: 1.5; }
@@ -293,11 +296,11 @@ const PREVIEW_HTML = `<!doctype html>
     .frame-wrap { padding: 1rem; }
     .frame-inner { padding: 1.25rem 0.5rem 1rem; }
     .clock-row { gap: 16px; }
-    .clock-cell { min-width: 160px; }
+    .clock-cell { min-width: 200px; }
     .epaper-card { width: 220px; height: 100px; }
     .epaper-name { font-size: 2.5rem; }
     .epaper-city { font-size: 1rem; }
-    .dial-svg { width: 90px; height: 90px; }
+    .dial-svg { width: 210px; height: 210px; }
   }
 </style>
 </head>
