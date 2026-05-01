@@ -132,88 +132,201 @@ function handlePreview() {
   });
 }
 
+/**
+ * @decision DEC-EPAPER-004
+ * @title Preview site is the design source-of-truth for label aesthetic
+ * @status accepted
+ * @rationale Web preview is fast to iterate; firmware mirrors it via
+ * Adafruit_GFX-bundled fonts. Theme A (Editorial): Playfair Display +
+ * Lora via Google Fonts on the preview; FreeSerifBold24pt7b + FreeSerif12pt7b
+ * in firmware. Preview background #f7f3ec (paper off-white), label cards
+ * #fdfaf3 with 1px #1a1a1a border — faithful mock of black-on-paper e-paper.
+ * Live-update JS (60s poll + 1s render) retained from previous version.
+ */
 const PREVIEW_HTML = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Family Clock — Preview</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Lora:wght@400;500&display=swap">
 <style>
-  body { background:#1a1a1a; color:#eee; font-family:-apple-system,system-ui,sans-serif; margin:0; padding:2rem; min-height:100vh; box-sizing:border-box; }
-  h1 { font-weight:300; margin:0 0 1.5rem; opacity:.6; font-size:1rem; letter-spacing:.05em; text-transform:uppercase; text-align:center; }
-  .row { display:flex; gap:2rem; flex-wrap:wrap; justify-content:center; }
-  .kid { background:#2a2a2a; border-radius:1rem; padding:1.5rem; width:240px; max-width:100%; box-sizing:border-box; text-align:center; box-shadow:0 4px 16px rgba(0,0,0,.3); }
-  .clock { width:200px; height:200px; margin:0 auto; display:block; }
-  .face { fill:#f5f5f5; stroke:#333; stroke-width:2; }
-  .tick { stroke:#333; stroke-width:1.5; }
-  .tick.major { stroke-width:3; }
-  .hand-h { stroke:#222; stroke-width:5; stroke-linecap:round; }
-  .hand-m { stroke:#222; stroke-width:3; stroke-linecap:round; }
-  .hand-s { stroke:#c33; stroke-width:1.2; stroke-linecap:round; }
-  .pivot { fill:#222; }
-  .name { font-weight:600; font-size:1.25rem; margin-top:.75rem; letter-spacing:.02em; }
-  .city { opacity:.7; font-size:.95rem; margin-top:.25rem; }
-  .digital { font-variant-numeric:tabular-nums; opacity:.5; font-size:.85rem; margin-top:.5rem; }
-  .empty { opacity:.4; font-style:italic; padding:5rem 0; text-align:center; }
-  .meta { margin-top:2rem; opacity:.4; font-size:.8rem; text-align:center; }
-  .err { color:#f88; }
+  /* ---- Page shell ---- */
+  *, *::before, *::after { box-sizing: border-box; }
+  body {
+    background: #f7f3ec;
+    color: #1a1a1a;
+    margin: 0;
+    padding: 2.5rem 1.5rem 3rem;
+    min-height: 100vh;
+    font-family: 'Lora', Georgia, serif;
+  }
 
-  /* Physical-clock mockup */
-  .mockup-title { text-align:center; opacity:.55; font-size:.85rem; letter-spacing:.06em; text-transform:uppercase; margin:3rem 0 1rem; font-weight:300; }
-  .frame { max-width:720px; margin:0 auto; padding:1.5rem; background:linear-gradient(180deg,#5a3a22,#3d2616); border-radius:10px; box-shadow:0 8px 32px rgba(0,0,0,.6), inset 0 0 0 2px rgba(0,0,0,.5); }
-  .frame-inner { background:#f0ede5; border-radius:3px; padding:2rem 1rem 1.75rem; box-shadow:inset 0 4px 16px rgba(0,0,0,.15); }
-  .mockup-row { display:flex; justify-content:space-around; align-items:flex-start; gap:1rem; }
-  .mockup-cell { display:flex; flex-direction:column; align-items:center; gap:1rem; flex:1; min-width:0; }
-  .real-clock { width:100%; max-width:140px; height:auto; display:block; }
-  .real-face { fill:#fff; stroke:#2a2a2a; stroke-width:1.5; }
-  .real-tick { stroke:#2a2a2a; stroke-width:1.2; }
-  .real-tick.major { stroke-width:2.5; }
-  .real-hand-h { stroke:#1a1a1a; stroke-width:4; stroke-linecap:round; }
-  .real-hand-m { stroke:#1a1a1a; stroke-width:2.5; stroke-linecap:round; }
-  .real-hand-s { stroke:#c33; stroke-width:1; stroke-linecap:round; }
-  .real-pivot { fill:#1a1a1a; }
-  .oled { background:#050a14; border:1px solid #1a1a1a; border-radius:2px; padding:.4rem .5rem; min-width:100px; max-width:130px; text-align:center; box-shadow:0 0 6px rgba(255,255,255,.04); }
-  .oled-name { color:#fff; font-weight:700; font-size:.72rem; letter-spacing:.05em; font-family:ui-monospace,Menlo,monospace; line-height:1.2; }
-  .oled-city { color:#fff; font-size:.6rem; opacity:.85; font-family:ui-monospace,Menlo,monospace; line-height:1.3; margin-top:2px; }
-  .mockup-caption { text-align:center; opacity:.4; font-size:.7rem; margin:.75rem 0 0; font-style:italic; }
+  /* ---- Header ---- */
+  .page-header {
+    text-align: center;
+    margin: 0 0 2.5rem;
+  }
+  .page-header h1 {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-weight: 900;
+    font-size: 2rem;
+    letter-spacing: -0.02em;
+    margin: 0 0 0.25rem;
+    color: #1a1a1a;
+  }
+  .page-header .subtitle {
+    font-family: 'Lora', Georgia, serif;
+    font-weight: 400;
+    font-size: 0.85rem;
+    color: #888;
+    letter-spacing: 0.04em;
+  }
 
-  @media (max-width: 600px) {
-    body { padding:1rem 0.75rem; }
-    h1 { margin:0 0 1rem; font-size:.85rem; }
-    .row { gap:1rem; }
-    .kid { width:100%; max-width:360px; padding:1.25rem; }
-    .clock { width:240px; height:240px; }
-    .name { font-size:1.4rem; margin-top:1rem; }
-    .city { font-size:1rem; }
-    .digital { font-size:.9rem; }
-    .frame { padding:1rem; }
-    .frame-inner { padding:1.25rem .25rem 1rem; }
-    .mockup-row { gap:.4rem; }
-    .real-clock { max-width:90px; }
-    .oled { min-width:70px; max-width:100px; padding:.3rem .35rem; }
-    .oled-name { font-size:.6rem; letter-spacing:.03em; }
-    .oled-city { font-size:.5rem; }
+  /* ---- Frame mockup ---- */
+  .frame-wrap {
+    max-width: 1100px;
+    margin: 0 auto 1rem;
+    padding: 1.5rem 2rem 1.75rem;
+    background: linear-gradient(170deg, #5a3a22, #3a2010);
+    border-radius: 8px;
+  }
+  .frame-inner {
+    background: #f0ede5;
+    border-radius: 3px;
+    padding: 2rem 1.5rem 1.5rem;
+  }
+
+  /* ---- Dial + label row ---- */
+  .clock-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    justify-content: center;
+    align-items: flex-start;
+  }
+  .clock-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    flex: 1;
+    min-width: 200px;
+    max-width: 320px;
+  }
+
+  /* ---- Analog dial ---- */
+  .dial-svg {
+    width: 120px;
+    height: 120px;
+    display: block;
+  }
+  .dial-face  { fill: #fff; stroke: #2a2a2a; stroke-width: 1.5; }
+  .dial-tick  { stroke: #2a2a2a; stroke-width: 1.2; }
+  .dial-tick.major { stroke-width: 2.5; }
+  .dial-hand-h { stroke: #1a1a1a; stroke-width: 4;   stroke-linecap: round; }
+  .dial-hand-m { stroke: #1a1a1a; stroke-width: 2.5; stroke-linecap: round; }
+  .dial-hand-s { stroke: #c33;    stroke-width: 1;   stroke-linecap: round; }
+  .dial-pivot  { fill: #1a1a1a; }
+
+  /* ---- E-paper label card ---- */
+  /* Dimensions ~300×130px ≈ 4.5× scale of 66.9×29.1mm active area */
+  .epaper-card {
+    width: 300px;
+    height: 130px;
+    border: 1px solid #1a1a1a;
+    border-radius: 12px;
+    background: #fdfaf3;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 16px;
+    gap: 6px;
+  }
+  .epaper-name {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-weight: 900;
+    font-size: 3.5rem;
+    line-height: 1;
+    text-transform: uppercase;
+    color: #1a1a1a;
+    letter-spacing: 0.02em;
+  }
+  .epaper-city {
+    font-family: 'Lora', Georgia, serif;
+    font-weight: 500;
+    font-size: 1.25rem;
+    color: #444;
+    line-height: 1.2;
+  }
+  .epaper-time {
+    font-family: 'Lora', Georgia, serif;
+    font-weight: 400;
+    font-size: 0.9rem;
+    color: #888;
+    font-variant-numeric: tabular-nums;
+  }
+  .epaper-card.empty {
+    opacity: 0.35;
+    font-style: italic;
+    font-family: 'Lora', Georgia, serif;
+    color: #888;
+    font-size: 0.9rem;
+    justify-content: center;
+  }
+
+  /* ---- Status bar ---- */
+  .meta {
+    text-align: center;
+    font-size: 0.78rem;
+    color: #aaa;
+    margin-top: 0.75rem;
+    font-family: 'Lora', Georgia, serif;
+  }
+  .err { color: #c44; }
+
+  /* ---- Responsive ---- */
+  @media (max-width: 700px) {
+    body { padding: 1.5rem 0.75rem 2rem; }
+    .page-header h1 { font-size: 1.5rem; }
+    .frame-wrap { padding: 1rem; }
+    .frame-inner { padding: 1.25rem 0.5rem 1rem; }
+    .clock-row { gap: 16px; }
+    .clock-cell { min-width: 160px; }
+    .epaper-card { width: 220px; height: 100px; }
+    .epaper-name { font-size: 2.5rem; }
+    .epaper-city { font-size: 1rem; }
+    .dial-svg { width: 90px; height: 90px; }
   }
 </style>
 </head>
 <body>
-<h1>Family Clock — Live Preview</h1>
 
-<div class="frame"><div class="frame-inner"><div class="mockup-row" id="mockupRoot"></div></div></div>
-<div class="mockup-caption">Approximate proportions, ~12"×6" shadow box</div>
+<div class="page-header">
+  <h1>Family Clock</h1>
+  <div class="subtitle">Live preview &mdash; updates every minute</div>
+</div>
 
+<div class="frame-wrap">
+  <div class="frame-inner">
+    <div class="clock-row" id="clockRow"></div>
+  </div>
+</div>
 <div class="meta" id="meta"></div>
 
 <script>
 const token = location.pathname.split('/')[2];
-const mockupRoot = document.getElementById('mockupRoot');
+const clockRow = document.getElementById('clockRow');
 const meta = document.getElementById('meta');
 let kids = [];
 
-function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 
-function clockSvg(localSec, p) {
-  p = p || '';
+function dialSvg(localSec) {
   const h = (localSec / 3600) % 12;
   const m = (localSec % 3600) / 60;
   const s = localSec % 60;
@@ -225,41 +338,51 @@ function clockSvg(localSec, p) {
     const a = i * 6 * Math.PI / 180;
     const r1 = i % 5 === 0 ? 84 : 90;
     const r2 = 96;
-    ticks += '<line class="' + p + 'tick ' + (i%5===0?'major':'') + '" x1="' + (100 + r1*Math.sin(a)) + '" y1="' + (100 - r1*Math.cos(a)) + '" x2="' + (100 + r2*Math.sin(a)) + '" y2="' + (100 - r2*Math.cos(a)) + '"/>';
+    ticks += '<line class="dial-tick ' + (i % 5 === 0 ? 'major' : '') +
+      '" x1="' + (100 + r1 * Math.sin(a)) + '" y1="' + (100 - r1 * Math.cos(a)) +
+      '" x2="' + (100 + r2 * Math.sin(a)) + '" y2="' + (100 - r2 * Math.cos(a)) + '"/>';
   }
-  const hand = (cls, len, ang) => '<line class="' + cls + '" x1="100" y1="100" x2="' + (100 + len*Math.sin(ang*Math.PI/180)) + '" y2="' + (100 - len*Math.cos(ang*Math.PI/180)) + '"/>';
-  return '<svg class="' + p + 'clock" viewBox="0 0 200 200">' +
-    '<circle class="' + p + 'face" cx="100" cy="100" r="98"/>' +
+  const hand = (cls, len, ang) =>
+    '<line class="' + cls + '" x1="100" y1="100" x2="' +
+    (100 + len * Math.sin(ang * Math.PI / 180)) + '" y2="' +
+    (100 - len * Math.cos(ang * Math.PI / 180)) + '"/>';
+  return '<svg class="dial-svg" viewBox="0 0 200 200">' +
+    '<circle class="dial-face" cx="100" cy="100" r="98"/>' +
     ticks +
-    hand(p + 'hand-h', 50, hAng) +
-    hand(p + 'hand-m', 75, mAng) +
-    hand(p + 'hand-s', 82, sAng) +
-    '<circle class="' + p + 'pivot" cx="100" cy="100" r="4"/>' +
+    hand('dial-hand-h', 50, hAng) +
+    hand('dial-hand-m', 75, mAng) +
+    hand('dial-hand-s', 82, sAng) +
+    '<circle class="dial-pivot" cx="100" cy="100" r="4"/>' +
     '</svg>';
 }
 
-function fmtDigital(localSec) {
+function fmtTime(localSec) {
   const h = Math.floor(localSec / 3600) % 24;
   const m = Math.floor((localSec % 3600) / 60);
   const ampm = h >= 12 ? 'PM' : 'AM';
   const h12 = ((h + 11) % 12) + 1;
-  return h12 + ':' + String(m).padStart(2,'0') + ' ' + ampm;
+  return h12 + ':' + String(m).padStart(2, '0') + ' ' + ampm;
 }
 
 function render() {
+  const nowUtc = Math.floor(Date.now() / 1000);
   if (!kids.length) {
-    mockupRoot.innerHTML = '';
+    clockRow.innerHTML = '<div style="opacity:.5;font-style:italic;padding:2rem;text-align:center">No data yet — waiting for a location update.</div>';
     return;
   }
-  const nowUtc = Math.floor(Date.now() / 1000);
-  mockupRoot.innerHTML = kids.map(k => {
+  clockRow.innerHTML = kids.map(k => {
     const localSec = ((nowUtc + (k.offset_seconds || 0)) % 86400 + 86400) % 86400;
-    const cityLine = (k.city || 'Unknown') + (k.country ? ', ' + k.country : '');
-    return '<div class="mockup-cell">' + clockSvg(localSec, 'real-') +
-      '<div class="oled">' +
-      '<div class="oled-name">' + esc((k.name || '?').toUpperCase()) + '</div>' +
-      '<div class="oled-city">' + esc(cityLine) + '</div>' +
-      '</div></div>';
+    const cityLine = esc((k.city || 'Unknown') + (k.country ? ', ' + k.country : ''));
+    const name = esc(k.name || '?');
+    const timeStr = esc(fmtTime(localSec));
+    return '<div class="clock-cell">' +
+      dialSvg(localSec) +
+      '<div class="epaper-card">' +
+        '<div class="epaper-name">' + name + '</div>' +
+        '<div class="epaper-city">' + cityLine + '</div>' +
+        '<div class="epaper-time">' + timeStr + '</div>' +
+      '</div>' +
+    '</div>';
   }).join('');
 }
 
@@ -271,7 +394,8 @@ async function poll() {
       return;
     }
     kids = await r.json();
-    meta.textContent = 'loaded ' + kids.length + ' kid' + (kids.length===1?'':'s') + ' · last sync ' + new Date().toLocaleTimeString();
+    meta.textContent = 'loaded ' + kids.length + ' kid' + (kids.length === 1 ? '' : 's') +
+      ' · last sync ' + new Date().toLocaleTimeString();
   } catch (e) {
     meta.innerHTML = '<span class="err">' + esc(e.message) + '</span>';
   }

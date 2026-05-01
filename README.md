@@ -9,9 +9,11 @@ name plus city/country; updates happen automatically when anyone travels.
    │  ┌───┐  │   │  ┌───┐  │   │  ┌───┐  │
    │  │ ⏰ │  │   │  │ ⏰ │  │   │  │ ⏰ │  │     <- quartz movements
    │  └───┘  │   │  └───┘  │   │  └───┘  │
-   │ ALEX    │   │ JORDAN  │   │ NICK    │     <- 0.96" OLED labels
-   │ Brooklyn│   │ Denver  │   │ Seattle │
-   │ , US    │   │ , US    │   │ , US    │
+   │ ╔═════╗ │   │ ╔═════╗ │   │ ╔═════╗ │
+   │ ║ALEX ║ │   │ ║JORDAN║ │   │ ║NICK ║ │     <- 2.9" e-paper labels
+   │ ║Brook║ │   │ ║Denver║ │   │ ║Seatt║ │
+   │ ║ , US║ │   │ ║ , US ║ │   │ ║ , US║ │
+   │ ╚═════╝ │   │ ╚═════╝ │   │ ╚═════╝ │
    └─────────┘   └─────────┘   └─────────┘
 ```
 
@@ -26,7 +28,7 @@ name plus city/country; updates happen automatically when anyone travels.
                               ESP32 in the clock
                               ├─ NTP (UTC)
                               ├─ 3× Lavet motor coils
-                              └─ 3× SSD1306 OLED labels
+                              └─ 3× 2.9" e-paper labels
 ```
 
 Each phone runs an iOS Shortcut (geofence + periodic timer → POST). The
@@ -42,7 +44,7 @@ its hands.
 |---|---|---|---|
 | ESP32 dev board (DevKitC, NodeMCU-32S, ESP32-S3) | 1 | $10 | USB-C connector preferred |
 | Quartz clock movement w/ hands | 3 (buy 5) | $15–25 | "High torque" — first one or two will be casualties from the Lavet hack |
-| 0.96" SSD1306 SPI OLED, 128×64 | 3 | $10–15 total | **SPI variant only** — I2C needs a multiplexer |
+| 2.9" e-paper module, 296×128, SPI (Waveshare or compatible) | 3 | ~$70 total | **SPI variant only** — check "2.9inch e-Paper Module" on Waveshare or Amazon |
 | Hall effect sensor (A3144 or 49E) | 3 | $5 | Usually sold in 10-packs |
 | Neodymium disc magnet, 3mm × 1mm | 3 | $6–10 | Comes in packs of 50–100 |
 | 1/4 W resistor assortment kit | 1 | $10 | Need 220–470 Ω; assortment kit covers years of projects |
@@ -52,15 +54,28 @@ its hands.
 | 5V USB-C wall wart + cable | 1 | $10 | 1A is plenty for ~150 mA total draw |
 | Cord cover (paint-matchable) | 1 | $8 | Hides the wall-power cable from frame to outlet |
 
-**Total: ~$120–150** plus paint/finish.
+**Total: ~$180–215** plus paint/finish.
 
-> **Why OLED instead of e-paper?** Three Waveshare 1.54" e-paper modules
-> would run $50–60 with 1–2 week shipping; three SSD1306 OLEDs run $10–15
-> with next-day Prime. The tradeoffs are ~60 mA always-on draw (fine on
-> wall power) and burn-in risk over years (mitigated because labels only
-> change when someone travels). If you want the "framed print" look back,
-> swap the firmware's `Adafruit_SSD1306` includes for `GxEPD2_BW` and use
-> Waveshare 1.54" modules instead.
+> **Why 2.9" e-paper?** Four reasons this is the right choice for a
+> multi-year wall gift:
+>
+> - **Readable across a room.** 2.9" at 296×128 px is ~8× the active area
+>   of a 0.96" SSD1306 OLED. The name is comfortably legible from the
+>   couch; the city is readable by walking up.
+> - **No burn-in over years.** A static OLED label ghosts after 1–2 years
+>   of 24/7 display. E-paper holds its image indefinitely with zero power —
+>   the pixels are bistable ink. A gift that's still sharp in 10 years.
+> - **Matte paper-print aesthetic.** Black ink on off-white paper matches
+>   the "framed print" feel far better than a glowing OLED screen on a
+>   dark-themed background. The preview site mirrors this.
+> - **Near-zero idle power.** ~50 mA briefly during a refresh, then zero.
+>   The whole clock runs off a 1A USB wall wart with plenty of headroom.
+>
+> The trade: full refresh takes ~2 seconds and flickers through black/white.
+> This is invisible in practice because labels only change when someone
+> travels — you're not watching it refresh. Partial refresh (~0.4 sec) is
+> available in GxEPD2 but not used here; the current code only refreshes
+> when the city or timezone actually changes.
 
 ## Build (hardware)
 
@@ -90,19 +105,22 @@ Default pin map (in `family-clock.ino`):
 
 ```
 SPI shared:    SCK=18, MOSI=23
-OLED RST:      4 (shared by all three)
-Display 0:     CS=5,  DC=17
-Display 1:     CS=14, DC=16
-Display 2:     CS=21, DC=22
+E-paper RST:   4 (shared by all three)
+Display 0:     CS=5,  DC=17, BUSY=34
+Display 1:     CS=14, DC=16, BUSY=35
+Display 2:     CS=21, DC=22, BUSY=39
 Motor 0:       A=25, B=26
 Motor 1:       A=27, B=13
 Motor 2:       A=32, B=33
 Hall 0/1/2:    36, 19, 15
 ```
 
-All OLED modules share VCC (3.3V), GND, SCK (CLK/D0), MOSI (DIN/D1), and
-RST. Each gets its own CS and DC. SSD1306 modules don't have a BUSY pin
-— ignore that pin on the module if it has one.
+All e-paper modules share VCC (3.3V), GND, SCK (CLK), MOSI (DIN), and
+RST. Each gets its own CS, DC, and BUSY line. BUSY pins 34, 35, and 39
+are input-only GPIOs on the ESP32 (no output driver) — they are safe to
+use as BUSY inputs and are otherwise unused in this design. The e-paper
+module holds BUSY low while refreshing; the GxEPD2 library polls it
+before sending the next command.
 
 Each Lavet coil connects between its two motor pins (A, B). The ESP32
 drives them push-pull alternately each tick — no driver IC needed, just
@@ -113,13 +131,14 @@ the series resistor.
 1. Cut your face plate to fit the frame opening.
 2. Mark and drill three holes for the clock movement shafts (typically
    8mm), evenly spaced across the upper half.
-3. Cut three rectangular windows for the OLED modules below each clock.
-   Active area on the 0.96" 128×64 SSD1306 is roughly 22×11mm — leave a
-   ~2mm border so the module's PCB isn't visible from the front.
-4. Mount movements from behind (their nuts go on the front), OLED modules
-   from behind with the screen aligned to the windows. The OLEDs are
-   light enough to hot-glue or double-stick-tape directly to the
-   faceplate back.
+3. Cut three rectangular windows for the e-paper modules below each clock.
+   Active area on the 2.9" panel is ~67×29mm — the faceplate SVG uses
+   70×32mm cut windows (1.5mm tolerance each side). Use the provided
+   `faceplate.svg` with a laser cutter or print it as a drilling template.
+4. Mount movements from behind (their nuts go on the front), e-paper modules
+   from behind with the active area aligned to the windows. The modules are
+   light enough to hot-glue or double-stick-tape directly to the faceplate
+   back. Route the ribbon/flex cable to the ESP32 board.
 5. Mount the ESP32 and wiring on a small piece of perfboard glued to
    the back panel. USB-C cable exits through a small notch.
 6. Run the USB-C cable through a paint-matched cord cover from the frame
@@ -235,7 +254,7 @@ handles significant-location reporting natively.
 
 1. Install Arduino IDE 2.x and add the ESP32 board package.
 2. Library Manager → install: **WiFiManager** (tzapu), **ArduinoJson**
-   (Benoit Blanchon, v7+), **Adafruit SSD1306**, **Adafruit GFX**.
+   (Benoit Blanchon, v7+), **GxEPD2** (Jean-Marc Zingg), **Adafruit GFX**.
 3. Open `firmware/family-clock.ino`. Edit `SERVER_URL` to your Worker
    URL with your clock token.
 4. Board: ESP32 Dev Module. Partition Scheme: **Default** is fine.
@@ -264,20 +283,27 @@ because we only know UTC, not where the hand physically is. If this
 matters, add a manual "rehome" button (one GPIO with a pushbutton to
 GND) that retriggers `homeClock()` for all three.
 
-**OLED shows nothing.** Most common cause: I2C-only module (no MOSI
-input). Check the silkscreen for `SCL/SDA` (I2C) vs `CLK/DIN` (SPI) — we
-need SPI. Second most common: the module has a built-in jumper / 0Ω
-resistor for switching between I2C and SPI; consult the datasheet for
-your specific board.
+**E-paper stays blank on first power-up.** Most likely cause: driver IC
+variant mismatch. 2.9" modules ship with either a UC8151 or SSD1675 driver
+IC, and GxEPD2 has different constructors for each. The default firmware
+uses `GxEPD2_290_BS` (UC8151). If the panel stays white or shows scrambled
+pixels, open `family-clock.ino` and change all three display declarations
+to use `GxEPD2_290_T94` instead. If that also fails, try `GxEPD2_290`.
+Only physical bring-up with your specific modules determines the right one.
 
-**OLED text shifts or flickers.** Loose CS or DC pin — verify the
-header pins are seated. Try slowing SPI by passing a slower bus to
-`Adafruit_SSD1306` if you're seeing artifacts on long wires.
+**Ghosting / faint previous image visible.** Normal for e-paper; the panel
+retains a faint ghost of past content. The GxEPD2 full refresh (used in
+this firmware) clears the ghost by cycling black-white before drawing the
+new image. If ghosting persists, call `display.clearScreen()` before
+`display.display(false)` to force a double-clear cycle.
 
-**Burn-in over time.** Static text on OLEDs ghosts after 1–2 years of
-24/7 display. The labels here only change on travel, so this is real.
-Mitigation: shift the cursor X by a few pixels every poll cycle (random
-walk within a small range) — easy to add in `drawLabels()`.
+**BUSY pin stuck low (panel never becomes ready).** The e-paper module
+holds BUSY low while refreshing (typically ~2 seconds). If BUSY stays
+low for more than 5 seconds: (1) verify the BUSY wire is connected to
+pins 34/35/39 and not floating, (2) check that VCC is solid 3.3V (not
+drooping from a shared rail), (3) check that CS is not held asserted by
+another device. A stuck BUSY usually means the panel is not receiving a
+valid reset sequence — confirm RST (pin 4) is wired correctly.
 
 **Worker returns `"city":"Unknown"`.** Nominatim's free endpoint occasionally
 returns no `address.city`/`town`/`village` for remote coordinates. Worker
