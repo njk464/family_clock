@@ -1,22 +1,24 @@
 /*
  * Family Clock — ESP32 firmware
  *
- * Drives 3 quartz clock movements (Lavet-motor hack) and 3 small SSD1306
- * 128x64 OLED labels over SPI. Polls a Cloudflare Worker every 15 minutes
- * for each kid's timezone offset, city, and country, then ticks each
- * clock's hands toward the correct local time.
+ * Drives 3 quartz clock movements (Lavet-motor hack) and 3× 2.9" e-paper
+ * labels (296×128 px, Waveshare-compatible) over SPI. Polls a Cloudflare
+ * Worker every 15 minutes for each kid's timezone offset, city, and
+ * country, then ticks each clock's hands toward the correct local time.
  *
- * @decision OLEDs (SSD1306) instead of e-paper: cheaper (~$10/3 vs $50/3),
- * faster Amazon shipping, brighter at a distance. Tradeoff is ~60 mA
- * always-on draw and burn-in risk over years; mitigated by USB wall
- * power and labels that change rarely (only on travel).
+ * @decision DEC-EPAPER-001 / DEC-EPAPER-002
+ * OLEDs (SSD1306) → 2.9" Waveshare e-paper (~$23 each × 3 = ~$70).
+ * Reason: 0.96" SSD1306 panels were unreadable across a room; 2.9" e-paper
+ * gives 8× active area (296×128 vs 128×64), no burn-in over years on a wall,
+ * paper-print aesthetic. Library swapped from Adafruit_SSD1306 → GxEPD2_BW.
+ * BUSY pins added on 34/35/39 (input-only ESP32 GPIOs, otherwise unused).
  *
  * Hardware (default ESP32 dev board pin map; adjust below if needed):
  *   Shared SPI:            SCK=18, MOSI=23
- *   OLED RST (shared):     4
- *   Display 0:             CS=5,  DC=17
- *   Display 1:             CS=14, DC=16
- *   Display 2:             CS=21, DC=22
+ *   E-paper RST (shared):  4
+ *   Display 0:             CS=5,  DC=17, BUSY=34
+ *   Display 1:             CS=14, DC=16, BUSY=35
+ *   Display 2:             CS=21, DC=22, BUSY=39
  *   Motor 0 coil:          A=25, B=26
  *   Motor 1 coil:          A=27, B=13
  *   Motor 2 coil:          A=32, B=33
@@ -25,7 +27,7 @@
  * Required libraries (Library Manager):
  *   - WiFiManager by tzapu
  *   - ArduinoJson (v7+)
- *   - Adafruit SSD1306
+ *   - GxEPD2 (by Jean-Marc Zingg)
  *   - Adafruit GFX
  *
  * Configure SERVER_URL below before flashing.
@@ -42,9 +44,9 @@
 #include <time.h>
 
 #include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-#include <Fonts/FreeSansBold9pt7b.h>
-#include <Fonts/FreeSans9pt7b.h>
+#include <GxEPD2_BW.h>
+#include <Fonts/FreeSerifBold24pt7b.h>
+#include <Fonts/FreeSerif12pt7b.h>
 
 // ===== CONFIG ===========================================================
 
@@ -57,15 +59,35 @@
 // Pin map (see header comment)
 const int MOTOR_PINS[3][2] = { {25, 26}, {27, 13}, {32, 33} };
 const int HALL_PINS[3]      = { 36, 19, 15 };
-const int OLED_RST_SHARED   = 4;
+const int EPD_RST_SHARED    = 4;
 
-#define OLED_W 128
-#define OLED_H 64
+// BUSY pins on ESP32 input-only GPIOs (34, 35, 39 cannot be output pins —
+// they have no output driver, so they are safe to use as BUSY inputs only).
+const int BUSY_0 = 34;
+const int BUSY_1 = 35;
+const int BUSY_2 = 39;
 
-// SSD1306 SPI instances — share SCK/MOSI/RST, separate CS and DC per display.
-Adafruit_SSD1306 display0(OLED_W, OLED_H, &SPI, /*DC=*/ 17, /*RST=*/ OLED_RST_SHARED, /*CS=*/ 5);
-Adafruit_SSD1306 display1(OLED_W, OLED_H, &SPI, /*DC=*/ 16, /*RST=*/ OLED_RST_SHARED, /*CS=*/ 14);
-Adafruit_SSD1306 display2(OLED_W, OLED_H, &SPI, /*DC=*/ 22, /*RST=*/ OLED_RST_SHARED, /*CS=*/ 21);
+// E-paper display dimensions: 2.9" panel is 296 px wide × 128 px tall.
+#define EPD_W 296
+#define EPD_H 128
+
+// GxEPD2_BW display instances — share SCK/MOSI/RST, separate CS/DC/BUSY.
+//
+// Default constructor: GxEPD2_290_BS (UC8151 driver IC, Waveshare V2 common).
+//
+// DRIVER IC VARIANT WARNING: 2.9" modules ship with either a UC8151 or SSD1675
+// driver IC depending on vendor and revision. GxEPD2 provides different
+// constructors for each:
+//   UC8151  → GxEPD2_290_BS   (try this first)
+//   SSD1675 → GxEPD2_290_T94  (try if panel stays blank or scrambles on boot)
+//   Older   → GxEPD2_290      (try if both above fail)
+// Only physical bring-up determines which constructor matches your module.
+GxEPD2_BW<GxEPD2_290_BS, GxEPD2_290_BS::HEIGHT> display0(
+    GxEPD2_290_BS(/*CS=*/ 5,  /*DC=*/ 17, /*RST=*/ EPD_RST_SHARED, /*BUSY=*/ BUSY_0));
+GxEPD2_BW<GxEPD2_290_BS, GxEPD2_290_BS::HEIGHT> display1(
+    GxEPD2_290_BS(/*CS=*/ 14, /*DC=*/ 16, /*RST=*/ EPD_RST_SHARED, /*BUSY=*/ BUSY_1));
+GxEPD2_BW<GxEPD2_290_BS, GxEPD2_290_BS::HEIGHT> display2(
+    GxEPD2_290_BS(/*CS=*/ 21, /*DC=*/ 22, /*RST=*/ EPD_RST_SHARED, /*BUSY=*/ BUSY_2));
 
 // ===== STATE ============================================================
 
@@ -85,6 +107,12 @@ unsigned long lastPulseMs     = 0;
 unsigned long lastPollMs      = 0;
 bool          labelsDirty     = true;
 Preferences   prefs;
+
+// Previous label values per kid — tracked to avoid full e-paper refresh when
+// nothing changed. Full refresh (~2 sec, briefly visible) only runs when the
+// displayed name+city differ from the last drawn value.
+String        prevName[3];
+String        prevCity[3];
 
 // ===== ENTRY POINTS =====================================================
 
@@ -139,15 +167,12 @@ void initPins() {
 }
 
 void initDisplays() {
-  Adafruit_SSD1306* dpys[3] = { &display0, &display1, &display2 };
-  for (int i = 0; i < 3; i++) {
-    if (!dpys[i]->begin(SSD1306_SWITCHCAPVCC)) {
-      Serial.printf("[oled] display %d init failed\n", i);
-    }
-    dpys[i]->clearDisplay();
-    dpys[i]->setTextColor(SSD1306_WHITE);
-    dpys[i]->display();
-  }
+  // GxEPD2 init: 115200 baud diagnostic serial, SPIClass, no reset on power-up.
+  // Each call wakes the panel and performs the hardware reset sequence.
+  display0.init(115200);
+  display1.init(115200);
+  display2.init(115200);
+  Serial.println("[epd] displays initialised");
 }
 
 void connectWifi() {
@@ -326,45 +351,125 @@ void fetchKids() {
   Serial.printf("[http] got %d kids (changed=%d)\n", n, changed);
 }
 
-// ===== OLED LABELS ======================================================
+// ===== E-PAPER LABELS ===================================================
+
+/**
+ * Helper: draw a full-refresh frame on one e-paper display.
+ * Sets white background, then renders nameStr (large serif bold) centred
+ * in the upper portion and cityStr (smaller serif) centred below.
+ * Calls display(false) for a full refresh — visible ~2 sec flicker.
+ *
+ * @decision DEC-EPAPER-004
+ * Font theme A (Editorial): FreeSerifBold24pt7b for kid name (visually
+ * similar to Playfair Display used in web preview) and FreeSerif12pt7b
+ * for city (similar to Lora). These are bundled with Adafruit GFX — no
+ * custom font conversion needed.
+ *
+ * Cursor positions are hand-tuned for 296×128 landscape e-paper:
+ *   Name:  baseline at y=68 (FreeSerifBold24pt7b cap-height ~36px, so
+ *          top of text ≈ y=32; centred with a rough X calculation)
+ *   City:  baseline at y=105 (FreeSerif12pt7b cap-height ~16px)
+ * Text centering uses getTextBounds() when available; falls back to a
+ * fixed left margin if bounds are zero (first-call edge case).
+ */
+static void drawEpaperLabel(GxEPD2_BW<GxEPD2_290_BS, GxEPD2_290_BS::HEIGHT>& d,
+                             const String& nameStr, const String& cityStr) {
+  d.setRotation(1);  // landscape: 296 wide × 128 tall
+  d.setFullWindow();
+  d.firstPage();
+  do {
+    d.fillScreen(GxEPD_WHITE);
+    d.setTextColor(GxEPD_BLACK);
+
+    // ---- Name (large bold serif) ----------------------------------------
+    d.setFont(&FreeSerifBold24pt7b);
+    String nameUp = nameStr;
+    nameUp.toUpperCase();
+    int16_t bx, by;
+    uint16_t bw, bh;
+    d.getTextBounds(nameUp, 0, 0, &bx, &by, &bw, &bh);
+    int16_t nx = (bw > 0) ? ((EPD_W - (int16_t)bw) / 2 - bx) : 8;
+    int16_t ny = 68;  // baseline; cap-height ~36px → top ≈ y=32 (centred vertically in top 80px)
+    d.setCursor(nx, ny);
+    d.print(nameUp);
+
+    // ---- City + country (smaller serif) ----------------------------------
+    d.setFont(&FreeSerif12pt7b);
+    d.getTextBounds(cityStr, 0, 0, &bx, &by, &bw, &bh);
+    int16_t cx = (bw > 0) ? ((EPD_W - (int16_t)bw) / 2 - bx) : 8;
+    int16_t cy = 108;  // baseline; cap-height ~16px → top ≈ y=92
+    d.setCursor(cx, cy);
+    d.print(cityStr);
+
+  } while (d.nextPage());
+}
 
 void drawSplash() {
-  Adafruit_SSD1306* dpys[3] = { &display0, &display1, &display2 };
-  const char* lines[3] = { "Connecting", "to WiFi...", "" };
-  for (int i = 0; i < 3; i++) {
-    auto* d = dpys[i];
-    d->clearDisplay();
-    d->setTextColor(SSD1306_WHITE);
-    d->setFont(&FreeSansBold9pt7b);
-    d->setCursor(2, 38);
-    d->print(lines[i]);
-    d->display();
-  }
+  // One-time boot splash: "Family Clock" centred on all three panels.
+  // Uses a full refresh — acceptable at power-on before WiFi connects.
+  auto doSplash = [](GxEPD2_BW<GxEPD2_290_BS, GxEPD2_290_BS::HEIGHT>& d) {
+    d.setRotation(1);
+    d.setFullWindow();
+    d.firstPage();
+    do {
+      d.fillScreen(GxEPD_WHITE);
+      d.setTextColor(GxEPD_BLACK);
+      d.setFont(&FreeSerifBold24pt7b);
+      const char* title = "Family Clock";
+      int16_t bx, by;
+      uint16_t bw, bh;
+      d.getTextBounds(title, 0, 0, &bx, &by, &bw, &bh);
+      int16_t tx = (bw > 0) ? ((EPD_W - (int16_t)bw) / 2 - bx) : 8;
+      d.setCursor(tx, 68);
+      d.print(title);
+    } while (d.nextPage());
+  };
+  doSplash(display0);
+  doSplash(display1);
+  doSplash(display2);
+  Serial.println("[epd] splash drawn");
 }
 
 void drawLabels() {
-  Adafruit_SSD1306* dpys[3] = { &display0, &display1, &display2 };
-
+  // Full refresh only when content changed for a given kid slot.
+  // First call after boot always refreshes (prevName/prevCity are empty).
+  // Refresh strategy: track previous (name, city) per display; skip the
+  // ~2 sec full refresh if content is unchanged — e-paper holds the image
+  // indefinitely with zero power.
   for (int i = 0; i < 3; i++) {
-    auto* d = dpys[i];
-    // clearDisplay() blanks the buffer; removed-kid slots end up empty.
-    d->clearDisplay();
+    String newCity = "";
+    String newName = kids[i].valid ? kids[i].name : "";
     if (kids[i].valid) {
-      d->setTextColor(SSD1306_WHITE);
-
-      d->setFont(&FreeSansBold9pt7b);
-      d->setCursor(2, 18);
-      d->print(kids[i].name);
-
-      d->setFont(&FreeSans9pt7b);
-      d->setCursor(2, 40);
-      String place = kids[i].city;
+      newCity = kids[i].city;
       if (kids[i].country.length() > 0) {
-        place += ", ";
-        place += kids[i].country;
+        newCity += ", ";
+        newCity += kids[i].country;
       }
-      d->print(place);
     }
-    d->display();
+
+    if (newName == prevName[i] && newCity == prevCity[i]) {
+      continue;  // content unchanged — no refresh needed
+    }
+
+    Serial.printf("[epd] display %d updating: '%s' / '%s'\n",
+                  i, newName.c_str(), newCity.c_str());
+
+    auto doUpdate = [&](GxEPD2_BW<GxEPD2_290_BS, GxEPD2_290_BS::HEIGHT>& d) {
+      if (kids[i].valid) {
+        drawEpaperLabel(d, newName, newCity);
+      } else {
+        // Kid removed — blank the panel.
+        d.setFullWindow();
+        d.firstPage();
+        do { d.fillScreen(GxEPD_WHITE); } while (d.nextPage());
+      }
+    };
+
+    if      (i == 0) doUpdate(display0);
+    else if (i == 1) doUpdate(display1);
+    else             doUpdate(display2);
+
+    prevName[i] = newName;
+    prevCity[i] = newCity;
   }
 }

@@ -12,7 +12,7 @@
   Cut elements:
     1× outer perimeter rectangle              254 × 102 mm
     3× clock-movement shaft holes             8 mm diameter
-    3× OLED active-area windows               23 × 12 mm
+    3× e-paper active-area windows            70 × 32 mm
 
   All coordinates in mm, origin top-left.
 -->
@@ -33,12 +33,16 @@
     <circle cx="127"   cy="30" r="4"/>
     <circle cx="211.7" cy="30" r="4"/>
 
-    <!-- OLED active-area windows (23 × 12 mm, +1 mm tolerance over the
-         SSD1306 active rectangle of 21.74 × 10.86 mm) -->
-    <!-- Centered horizontally under each clock; centered vertically at y = 80 -->
-    <rect x="30.8"  y="74" width="23" height="12"/>
-    <rect x="115.5" y="74" width="23" height="12"/>
-    <rect x="200.2" y="74" width="23" height="12"/>
+    <!-- E-paper active-area windows (70 × 32 mm, +1.5 mm tolerance each side
+         over the 2.9" e-paper active rectangle of 66.9 × 29.1 mm).
+         Column centers at x = 42.3, 127, 211.7 mm → left edge = cx - 35.
+         Top edge y = 64 mm: 30 mm clearance below shaft-hole edge (shaft
+         center y=30, radius 4 mm), bottom edge y=96 → 6 mm bottom margin.
+         Note: dial markings must stay within ≈ 50 mm diameter around each
+         shaft to avoid overlapping the e-paper windows. -->
+    <rect x="7.3"   y="64" width="70" height="32"/>
+    <rect x="92"    y="64" width="70" height="32"/>
+    <rect x="176.7" y="64" width="70" height="32"/>
 
   </g>
 </svg>
