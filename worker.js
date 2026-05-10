@@ -167,7 +167,7 @@ const PREVIEW_HTML = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Family Clock — Preview</title>
 <meta name="theme-color" content="#f7f3ec">
 <meta name="apple-mobile-web-app-capable" content="yes">
