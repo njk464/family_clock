@@ -147,7 +147,7 @@ function handlePreview() {
  * card. Updated 2026-04-30.
  *
  * @decision DEC-PREVIEW-MOB-001
- * @title Mobile polish: system fonts, clamp(), dvh, safe-area, visibility-aware poll
+ * @title Mobile polish: system fonts, clamp(), dvh, safe-area, visibility-aware poll; 3-across layout (#7)
  * @status accepted
  * @rationale Issue #6. Dropped Google Fonts (Playfair Display + Lora) in favour
  * of a system serif stack (ui-serif / "New York" / Georgia). Rationale: (a)
@@ -162,6 +162,14 @@ function handlePreview() {
  * clocks render directly on the page background — the walnut frame distraction is
  * unnecessary on a 390px screen. Polling now skips while document.hidden and
  * re-fires on visibilitychange to avoid wasted fetches in background tabs.
+ * Issue #7. Changed mobile layout from wrapping single-column cards
+ * (min-width: 200px triggered wrap at 3 kids × 200px > 390px) to a forced
+ * 3-across row (flex-wrap: nowrap; flex: 1 1 0). Parents should be able to
+ * glance at a single iPhone screen and see all three kids' current times at once
+ * — matching the physical wall-clock layout. Dial capped at max-width: 110px,
+ * e-paper card goes fluid (width: 100%; height: auto), typography uses clamp()
+ * with vw units so text scales smoothly across 320–700px viewports. Subtitle
+ * hidden on mobile to reclaim vertical space.
  */
 const PREVIEW_HTML = `<!doctype html>
 <html lang="en">
@@ -323,12 +331,29 @@ const PREVIEW_HTML = `<!doctype html>
       padding-left: max(0.75rem, env(safe-area-inset-left));
       padding-right: max(0.75rem, env(safe-area-inset-right));
     }
+    .page-header { margin-bottom: 1rem; }
+    .page-header .subtitle { display: none; }
+
     .frame-wrap { background: none; padding: 0; border-radius: 0; }
     .frame-inner { background: none; padding: 0; }
-    .clock-row { gap: 16px; }
-    .clock-cell { min-width: 200px; }
-    .epaper-card { width: 220px; height: 100px; }
-    .dial-svg { width: 210px; height: 210px; }
+
+    .clock-row { flex-wrap: nowrap; gap: 8px; }
+    .clock-cell { min-width: 0; flex: 1 1 0; gap: 6px; max-width: none; }
+
+    .dial-svg { width: 100%; max-width: 110px; height: auto; }
+
+    .epaper-card {
+      width: 100%; height: auto;
+      border: none; background: none; border-radius: 0;
+      padding: 4px 2px; gap: 2px;
+    }
+    .epaper-name { font-size: clamp(0.85rem, 4vw, 1.1rem); }
+    .epaper-city {
+      font-size: clamp(0.65rem, 2.5vw, 0.8rem);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      max-width: 100%;
+    }
+    .epaper-time { font-size: clamp(0.65rem, 2.2vw, 0.8rem); }
   }
 </style>
 </head>
