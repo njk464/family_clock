@@ -145,24 +145,50 @@ function handlePreview() {
  * Dial sized to physical scale (~290 px desktop / ~210 px mobile) so preview
  * faithfully mocks ~68 mm wall-mounted clock face next to the 70 mm e-paper
  * card. Updated 2026-04-30.
+ *
+ * @decision DEC-PREVIEW-MOB-001
+ * @title Mobile polish: system fonts, clamp(), dvh, safe-area, visibility-aware poll
+ * @status accepted
+ * @rationale Issue #6. Dropped Google Fonts (Playfair Display + Lora) in favour
+ * of a system serif stack (ui-serif / "New York" / Georgia). Rationale: (a)
+ * cellular page-load latency — the fonts.googleapis.com round-trip adds ~400 ms
+ * on LTE; (b) native iOS feel — "New York" (Apple's own serif) renders crisply
+ * on Retina without a network fetch; (c) no layout shift. Switched body
+ * min-height to 100dvh (with 100vh fallback) so the page fills the iOS viewport
+ * correctly accounting for the dynamic URL bar. Added safe-area-inset-* padding
+ * via max() so the layout clears the notch/home-indicator on all iPhone models.
+ * Fluid typography via clamp() eliminates the need for redundant @media font-size
+ * overrides. Frame mockup simplified to background:none on small viewports so the
+ * clocks render directly on the page background — the walnut frame distraction is
+ * unnecessary on a 390px screen. Polling now skips while document.hidden and
+ * re-fires on visibilitychange to avoid wasted fetches in background tabs.
  */
 const PREVIEW_HTML = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Family Clock — Preview</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Lora:wght@400;500&display=swap">
+<meta name="theme-color" content="#f7f3ec">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <style>
-  /* ---- Page shell ---- */
+  /* ---- Reset + text-size ---- */
+  html { -webkit-text-size-adjust: 100%; }
   *, *::before, *::after { box-sizing: border-box; }
+
+  /* ---- Page shell ---- */
   body {
     background: #f7f3ec;
     color: #1a1a1a;
     margin: 0;
-    padding: 2.5rem 1.5rem 3rem;
+    padding-top: max(2.5rem, env(safe-area-inset-top));
+    padding-bottom: max(3rem, env(safe-area-inset-bottom));
+    padding-left: max(1.5rem, env(safe-area-inset-left));
+    padding-right: max(1.5rem, env(safe-area-inset-right));
     min-height: 100vh;
-    font-family: 'Lora', Georgia, serif;
+    min-height: 100dvh;
+    font-family: ui-serif, "New York", Georgia, "Times New Roman", serif;
   }
 
   /* ---- Header ---- */
@@ -171,15 +197,15 @@ const PREVIEW_HTML = `<!doctype html>
     margin: 0 0 2.5rem;
   }
   .page-header h1 {
-    font-family: 'Playfair Display', Georgia, serif;
+    font-family: ui-serif, "New York", Georgia, "Times New Roman", serif;
     font-weight: 900;
-    font-size: 2rem;
+    font-size: clamp(1.5rem, 4vw, 2rem);
     letter-spacing: -0.02em;
     margin: 0 0 0.25rem;
     color: #1a1a1a;
   }
   .page-header .subtitle {
-    font-family: 'Lora', Georgia, serif;
+    font-family: ui-serif, "New York", Georgia, "Times New Roman", serif;
     font-weight: 400;
     font-size: 0.85rem;
     color: #888;
@@ -248,23 +274,23 @@ const PREVIEW_HTML = `<!doctype html>
     gap: 6px;
   }
   .epaper-name {
-    font-family: 'Playfair Display', Georgia, serif;
+    font-family: ui-serif, "New York", Georgia, "Times New Roman", serif;
     font-weight: 900;
-    font-size: 3.5rem;
+    font-size: clamp(2.5rem, 9vw, 3.5rem);
     line-height: 1;
     text-transform: uppercase;
     color: #1a1a1a;
     letter-spacing: 0.02em;
   }
   .epaper-city {
-    font-family: 'Lora', Georgia, serif;
+    font-family: ui-serif, "New York", Georgia, "Times New Roman", serif;
     font-weight: 500;
-    font-size: 1.25rem;
+    font-size: clamp(1rem, 3.5vw, 1.25rem);
     color: #444;
     line-height: 1.2;
   }
   .epaper-time {
-    font-family: 'Lora', Georgia, serif;
+    font-family: ui-serif, "New York", Georgia, "Times New Roman", serif;
     font-weight: 400;
     font-size: 0.9rem;
     color: #888;
@@ -273,7 +299,7 @@ const PREVIEW_HTML = `<!doctype html>
   .epaper-card.empty {
     opacity: 0.35;
     font-style: italic;
-    font-family: 'Lora', Georgia, serif;
+    font-family: ui-serif, "New York", Georgia, "Times New Roman", serif;
     color: #888;
     font-size: 0.9rem;
     justify-content: center;
@@ -285,21 +311,23 @@ const PREVIEW_HTML = `<!doctype html>
     font-size: 0.78rem;
     color: #aaa;
     margin-top: 0.75rem;
-    font-family: 'Lora', Georgia, serif;
+    font-family: ui-serif, "New York", Georgia, "Times New Roman", serif;
   }
   .err { color: #c44; }
 
   /* ---- Responsive ---- */
   @media (max-width: 700px) {
-    body { padding: 1.5rem 0.75rem 2rem; }
-    .page-header h1 { font-size: 1.5rem; }
-    .frame-wrap { padding: 1rem; }
-    .frame-inner { padding: 1.25rem 0.5rem 1rem; }
+    body {
+      padding-top: max(1.5rem, env(safe-area-inset-top));
+      padding-bottom: max(2rem, env(safe-area-inset-bottom));
+      padding-left: max(0.75rem, env(safe-area-inset-left));
+      padding-right: max(0.75rem, env(safe-area-inset-right));
+    }
+    .frame-wrap { background: none; padding: 0; border-radius: 0; }
+    .frame-inner { background: none; padding: 0; }
     .clock-row { gap: 16px; }
     .clock-cell { min-width: 200px; }
     .epaper-card { width: 220px; height: 100px; }
-    .epaper-name { font-size: 2.5rem; }
-    .epaper-city { font-size: 1rem; }
     .dial-svg { width: 210px; height: 210px; }
   }
 </style>
@@ -390,6 +418,7 @@ function render() {
 }
 
 async function poll() {
+  if (document.hidden) return;
   try {
     const r = await fetch('/clock/' + encodeURIComponent(token));
     if (!r.ok) {
@@ -403,6 +432,7 @@ async function poll() {
     meta.innerHTML = '<span class="err">' + esc(e.message) + '</span>';
   }
 }
+document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
 
 poll();
 render();
